@@ -383,6 +383,34 @@ blocks:
         features:
           - features/gateway/mtls/outbound.feature
 
+  # Models and model endpoints are served only with controller.models on, which also provisions
+  # the shared default endpoint "wso2". Scenarios that send traffic serve their Models on an
+  # endpoint of their own, so their routes, keys and analytics events are theirs alone.
+  - name: gateway-models
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/models.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: model-gateway
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/models/model_gateway.feature
+      - name: model-endpoint-formats
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/models/model_endpoint_formats.feature
+      - name: model-endpoint-keys
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/models/model_endpoint_keys.feature
+      - name: model-endpoint-multiple
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/models/model_endpoint_multiple.feature
+
   # Config dump asserts the gateway's total API count starts at zero, which no other runner
   # may be free to disturb - it needs a gateway to itself rather than gateway-core's shared one.
   # Its overlay turns off the default model endpoint, which would otherwise be that one API.
