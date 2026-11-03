@@ -210,11 +210,21 @@ var errBedrockInternal = &awsError{status: http.StatusInternalServerError, code:
 var errBedrockUnavailable = &awsError{status: http.StatusServiceUnavailable, code: "ServiceUnavailableException",
 	message: "The service is temporarily unavailable. Try again later."}
 
-// Handler returns the ApplyGuardrail endpoint.
+// Handler returns the ApplyGuardrail endpoint, and Converse for an LLM provider on the
+// awsbedrock template.
 func (s *Bedrock) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if m := conversePath.FindStringSubmatch(r.URL.Path); m != nil {
+			if strings.ToUpper(r.Method) != http.MethodPost {
+				w.Header().Set("Allow", http.MethodPost)
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			s.converse(w, r, m[1])
+			return
+		}
 		match := guardrailPathRegex.FindStringSubmatch(r.URL.Path)
 		if match == nil {
 			http.NotFound(w, r)
