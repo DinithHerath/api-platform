@@ -63,7 +63,7 @@ Feature: API keys on model endpoints and Models
       | version     | v1.0                                                                                     |
       | modelName   | ${CTX:alpha}                                                                             |
       | endpoints   | ["${CTX:endpoint}"]                                                                      |
-      | targets     | [{"name": "a", "provider": {"id": "${CTX:provider}"}, "upstreamModel": "alpha-upstream"}] |
+      | targets     | [{"name": "alpha-upstream", "provider": "${CTX:provider}"}] |
     Then the response status code should be 201
     When I create Model from "resources/templates/model.yaml" with values:
       | name        | ${CTX:beta}                                                                             |
@@ -72,7 +72,7 @@ Feature: API keys on model endpoints and Models
       | version     | v1.0                                                                                    |
       | modelName   | ${CTX:beta}                                                                             |
       | endpoints   | ["${CTX:endpoint}"]                                                                     |
-      | targets     | [{"name": "a", "provider": {"id": "${CTX:provider}"}, "upstreamModel": "beta-upstream"}] |
+      | targets     | [{"name": "beta-upstream", "provider": "${CTX:provider}"}] |
     Then the response status code should be 201
 
     When I send a "POST" request to the "gateway-controller" service at "/model-endpoints/${CTX:endpoint}/api-keys" with body:

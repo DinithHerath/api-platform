@@ -108,7 +108,7 @@ Feature: Model gateway
       | version     | v1.0                                                                             |
       | modelName   | ${CTX:model}                                                                     |
       | endpoints   | ["wso2"]                                                                         |
-      | targets     | [{"name": "a", "provider": {"id": "any-provider"}, "upstreamModel": "gpt-4o"}] |
+      | targets     | [{"name": "gpt-4o", "provider": "any-provider"}] |
     Then the response status code should be 403
 
     Given I authenticate using basic auth as "admin"
@@ -127,7 +127,7 @@ Feature: Model gateway
       | modelName   | ${CTX:model}                                                                                                                                                       |
       | endpoints   | ["wso2"]                                                                                                                                                           |
       | targets     | []                                                                                                                                                                 |
-      | spec        | {"displayName": "${CTX:model}", "version": "v1.0", "modelName": "${CTX:model}", "targets": [{"name": "a", "provider": {"id": "any-provider"}, "upstreamModel": "gpt-4o"}]} |
+      | spec        | {"displayName": "${CTX:model}", "version": "v1.0", "modelName": "${CTX:model}", "targets": [{"name": "gpt-4o", "provider": "any-provider"}]} |
     Then the response status code should be 400
     And the response body should contain "spec.endpoints"
 
@@ -138,7 +138,7 @@ Feature: Model gateway
       | version     | v1.0                                                                             |
       | modelName   | ${CTX:model}                                                                     |
       | endpoints   | ["wso2", "${CTX:missingEndpoint}"]                                               |
-      | targets     | [{"name": "a", "provider": {"id": "any-provider"}, "upstreamModel": "gpt-4o"}] |
+      | targets     | [{"name": "gpt-4o", "provider": "any-provider"}] |
     Then the response status code should be 400
     And the response body should contain "spec.endpoints[1]: model endpoint '${CTX:missingEndpoint}' not found"
     When I send a "GET" request to the "gateway-controller" service at "/models/${CTX:model}"
@@ -181,7 +181,7 @@ Feature: Model gateway
       | version     | v1.0                                                                                               |
       | modelName   | ${CTX:model}                                                                                       |
       | endpoints   | ["${CTX:endpoint}"]                                                                                |
-      | targets     | [{"name": "direct", "provider": {"id": "${CTX:provider}"}, "upstreamModel": "direct-upstream-model"}] |
+      | targets     | [{"name": "direct-upstream-model", "provider": "${CTX:provider}"}] |
     Then the response status code should be 201
     When I send a "POST" request to the "gateway-controller" service at "/model-endpoints/${CTX:endpoint}/api-keys" with body:
       """
@@ -258,7 +258,7 @@ Feature: Model gateway
       | version     | v1.0                                                                                                                                                                                    |
       | modelName   | ${CTX:model}                                                                                                                                                                            |
       | endpoints   | ["${CTX:endpoint}"]                                                                                                                                                                     |
-      | targets     | [{"name": "routed", "provider": {"id": "${CTX:provider}"}, "upstreamModel": "routed-upstream-model", "auth": {"type": "api-key", "header": "X-Routed-Key", "value": "${CTX:providerKey}"}}] |
+      | targets     | [{"name": "routed-upstream-model", "provider": "${CTX:provider}", "alias": "routed", "auth": {"type": "api-key", "header": "X-Routed-Key", "value": "${CTX:providerKey}"}}] |
     Then the response status code should be 201
     # The target credential is write-only.
     And the response body should not contain "${CTX:providerKey}"
@@ -389,8 +389,8 @@ Feature: Model gateway
       | version      | v1.0                                                                                                                                                  |
       | modelName    | ${CTX:model}                                                                                                                                          |
       | endpoints    | ["${CTX:endpoint}"]                                                                                                                                   |
-      | targets      | [{"name": "a", "provider": {"id": "${CTX:providerA}"}, "upstreamModel": "model-a"}, {"name": "b", "provider": {"id": "${CTX:providerB}"}, "upstreamModel": "model-b"}] |
-      | spec.routing | {"policy": {"name": "model-round-robin", "version": "v1"}, "params": {"models": [{"model": "a"}, {"model": "b"}], "suspendDuration": 0}}                    |
+      | targets      | [{"name": "model-a", "provider": "${CTX:providerA}", "alias": "a"}, {"name": "model-b", "provider": "${CTX:providerB}"}] |
+      | spec.routing | {"policy": {"name": "model-round-robin", "version": "v1"}, "params": {"models": [{"model": "a"}, {"model": "model-b"}], "suspendDuration": 0}}                    |
     Then the response status code should be 201
     When I send a "POST" request to the "gateway-controller" service at "/model-endpoints/${CTX:endpoint}/api-keys" with body:
       """
@@ -399,7 +399,8 @@ Feature: Model gateway
     Then the response status code should be 201
     And I store the JSON response field "apiKey.apiKey" as "endpointKey"
 
-    # The router names a target by its name; each request goes to the next one.
+    # The router names one target by its alias and the other by its name; each request goes to
+    # the next one.
     When I clear all headers
     And I set header "Content-Type" to "application/json"
     And I set header "Authorization" to "Bearer ${CTX:endpointKey}"
@@ -427,7 +428,7 @@ Feature: Model gateway
       | version     | v1.0                                                                                                                                                  |
       | modelName   | ${CTX:unroutedModel}                                                                                                                                  |
       | endpoints   | ["${CTX:endpoint}"]                                                                                                                                   |
-      | targets     | [{"name": "a", "provider": {"id": "${CTX:providerA}"}, "upstreamModel": "model-a"}, {"name": "b", "provider": {"id": "${CTX:providerB}"}, "upstreamModel": "model-b"}] |
+      | targets     | [{"name": "model-a", "provider": "${CTX:providerA}", "alias": "a"}, {"name": "model-b", "provider": "${CTX:providerB}"}] |
     Then the response status code should be 400
     And the response body should contain "routing"
 
@@ -487,7 +488,7 @@ Feature: Model gateway
       | version     | v1.0                                                                                                                   |
       | modelName   | ${CTX:directModel}                                                                                                     |
       | endpoints   | ["${CTX:endpoint}"]                                                                                                    |
-      | targets     | [{"name": "bedrock", "provider": {"id": "${CTX:directProvider}"}, "upstreamModel": "anthropic.claude-3-haiku-20240307-v1:0"}] |
+      | targets     | [{"name": "anthropic.claude-3-haiku-20240307-v1:0", "provider": "${CTX:directProvider}"}] |
     Then the response status code should be 201
     When I create Model from "resources/templates/model.yaml" with values:
       | name        | ${CTX:routedModel}                                                                                                                                                                        |
@@ -496,7 +497,7 @@ Feature: Model gateway
       | version     | v1.0                                                                                                                                                                                      |
       | modelName   | ${CTX:routedModel}                                                                                                                                                                        |
       | endpoints   | ["${CTX:endpoint}"]                                                                                                                                                                       |
-      | targets     | [{"name": "bedrock", "provider": {"id": "${CTX:routedProvider}"}, "upstreamModel": "amazon.nova-lite-v1:0", "auth": {"type": "api-key", "header": "X-API-Key", "value": "${CTX:providerKey}"}}] |
+      | targets     | [{"name": "amazon.nova-lite-v1:0", "provider": "${CTX:routedProvider}", "auth": {"type": "api-key", "header": "X-API-Key", "value": "${CTX:providerKey}"}}] |
     Then the response status code should be 201
     When I send a "POST" request to the "gateway-controller" service at "/model-endpoints/${CTX:endpoint}/api-keys" with body:
       """
@@ -570,7 +571,7 @@ Feature: Model gateway
       | version     | v1.0                                                                                               |
       | modelName   | ${CTX:model}                                                                                       |
       | endpoints   | ["${CTX:endpoint}"]                                                                                |
-      | targets     | [{"name": "bedrock", "provider": {"id": "${CTX:provider}"}, "upstreamModel": "amazon.nova-lite-v1:0"}] |
+      | targets     | [{"name": "amazon.nova-lite-v1:0", "provider": "${CTX:provider}"}] |
     Then the response status code should be 201
     When I send a "POST" request to the "gateway-controller" service at "/model-endpoints/${CTX:endpoint}/api-keys" with body:
       """

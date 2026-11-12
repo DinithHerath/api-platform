@@ -79,7 +79,7 @@ Feature: Model endpoints in the Anthropic and Gemini formats
       | version     | v1.0                                                                                             |
       | modelName   | ${CTX:model}                                                                                     |
       | endpoints   | ["${CTX:endpoint}"]                                                                              |
-      | targets     | [{"name": "a", "provider": {"id": "${CTX:nativeProvider}"}, "upstreamModel": "claude-haiku-4-5"}] |
+      | targets     | [{"name": "claude-haiku-4-5", "provider": "${CTX:nativeProvider}"}] |
     Then the response status code should be 201
     # An OpenAI provider needs a transformer on an Anthropic endpoint, and this one has none: the
     # Model is refused, naming the endpoint, its format and the provider.
@@ -90,7 +90,7 @@ Feature: Model endpoints in the Anthropic and Gemini formats
       | version     | v1.0                                                                                   |
       | modelName   | ${CTX:refusedModel}                                                                    |
       | endpoints   | ["${CTX:endpoint}"]                                                                    |
-      | targets     | [{"name": "a", "provider": {"id": "${CTX:openaiProvider}"}, "upstreamModel": "gpt-4o"}] |
+      | targets     | [{"name": "gpt-4o", "provider": "${CTX:openaiProvider}"}] |
     Then the response status code should be 400
     And the response body should contain "endpoint '${CTX:endpoint}' (inbound format 'anthropic') has no transformer for provider '${CTX:openaiProvider}'"
 
@@ -185,7 +185,7 @@ Feature: Model endpoints in the Anthropic and Gemini formats
       | version     | v1.0                                                                                       |
       | modelName   | ${CTX:model}                                                                               |
       | endpoints   | ["${CTX:endpoint}"]                                                                        |
-      | targets     | [{"name": "a", "provider": {"id": "${CTX:provider}"}, "upstreamModel": "gemini-2.0-flash"}] |
+      | targets     | [{"name": "gemini-2.0-flash", "provider": "${CTX:provider}"}] |
     Then the response status code should be 201
     When I send a "POST" request to the "gateway-controller" service at "/model-endpoints/${CTX:endpoint}/api-keys" with body:
       """

@@ -94,7 +94,7 @@ Feature: Several model endpoints on one gateway
       | version     | v1.0                                                                                      |
       | modelName   | ${CTX:sharedModel}                                                                        |
       | endpoints   | ["${CTX:partners}", "${CTX:public}"]                                                      |
-      | targets     | [{"name": "a", "provider": {"id": "${CTX:provider}"}, "upstreamModel": "shared-upstream"}] |
+      | targets     | [{"name": "shared-upstream", "provider": "${CTX:provider}"}] |
     Then the response status code should be 201
     When I create Model from "resources/templates/model.yaml" with values:
       | name        | ${CTX:partnerOnlyModel}                                                                    |
@@ -103,7 +103,7 @@ Feature: Several model endpoints on one gateway
       | version     | v1.0                                                                                       |
       | modelName   | ${CTX:partnerOnlyModel}                                                                    |
       | endpoints   | ["${CTX:partners}"]                                                                        |
-      | targets     | [{"name": "a", "provider": {"id": "${CTX:provider}"}, "upstreamModel": "partner-upstream"}] |
+      | targets     | [{"name": "partner-upstream", "provider": "${CTX:provider}"}] |
     Then the response status code should be 201
     When I create Model from "resources/templates/model.yaml" with values:
       | name        | ${CTX:publicOnlyModel}                                                                    |
@@ -112,7 +112,7 @@ Feature: Several model endpoints on one gateway
       | version     | v1.0                                                                                      |
       | modelName   | ${CTX:publicOnlyModel}                                                                    |
       | endpoints   | ["${CTX:public}"]                                                                         |
-      | targets     | [{"name": "a", "provider": {"id": "${CTX:provider}"}, "upstreamModel": "public-upstream"}] |
+      | targets     | [{"name": "public-upstream", "provider": "${CTX:provider}"}] |
     Then the response status code should be 201
 
     When I send a "POST" request to the "gateway-controller" service at "/model-endpoints/${CTX:partners}/api-keys" with body:

@@ -107,11 +107,16 @@ spec:
   modelName: gpt-4o                # what clients send as the model
   endpoints: [wso2]                # the endpoints that serve it (required)
   targets:
-    - name: openai
-      provider:
-        id: openai-prod            # an LLM provider
-      upstreamModel: gpt-4o        # what the provider knows it as
+    - name: gpt-4o                 # the model, as the provider knows it
+      provider: openai-prod        # an LLM provider
 ```
+
+Each target is a model on an LLM provider:
+- `name` is the model the provider is asked for, as the provider knows it. For an Azure OpenAI provider it is the deployment name.
+- `provider` is the handle of an LLM provider.
+- `alias` is optional: a short name a routing policy can use for the target instead of its `name` (see [Route between targets](#route-between-targets)). It defaults to `name` and is unique within the Model, so when two targets serve the same model through different providers, give at least one of them an alias.
+
+The pair of `provider` and `name` is unique within the Model.
 
 ```bash
 curl -u admin:admin -X POST http://localhost:9090/api/management/v1/models \
@@ -179,17 +184,15 @@ A target on a provider that keeps its route presents a credential the provider's
 
 ```yaml
   targets:
-    - name: shared
-      provider:
-        id: shared-openai          # exposure: route, with api-key-auth
-      upstreamModel: gpt-4o
+    - name: gpt-4o
+      provider: shared-openai      # exposure: route, with api-key-auth
       auth:
         type: api-key
         header: X-API-Key
         value: '{{ secret "shared-openai-model-key" }}'
 ```
 
-The credential is write-only: it is never returned on a read, and an update that omits it keeps the stored one.
+The credential is write-only: it is never returned on a read. An update that omits it keeps the stored one, as long as the target keeps its provider and its alias (its `name`, when it has no alias). So a target with an alias can move to a new model and keep its credential.
 
 A routed provider has some extra requirements:
 - Its `accessControl` must allow the paths the endpoint writes to it (see `upstreamPaths` below).
@@ -222,14 +225,14 @@ A change to a provider is not checked this way. If one leaves an endpoint unable
 
 Within an entry:
 - `params` are passed to the policy. `{apiVersion}` (or `{apiVersion:<default>}`) is filled from the provider's `spec.upstream.apiVersion`. `providerId` is set by the gateway.
-- `upstreamPaths` are the paths the transformer writes, with `{upstreamModel}` and `{apiVersion}` placeholders. They are used only to check that a routed provider's `accessControl` allows them.
+- `upstreamPaths` are the paths the transformer writes, with `{upstreamModel}` (the target's `name`) and `{apiVersion}` placeholders. They are used only to check that a routed provider's `accessControl` allows them.
 
 The provisioned `wso2` endpoint starts with these entries:
 
 | Template | Transformer | Provider API version (`spec.upstream.apiVersion`) |
 |---|---|---|
 | `openai` | none needed | — |
-| `azure-openai` | `openai-to-azure-openai-transformer`; `upstreamModel` is the deployment name | required |
+| `azure-openai` | `openai-to-azure-openai-transformer`; the target's `name` is the deployment name | required |
 | `anthropic` | `openai-to-anthropic-transformer` | optional, default `2023-06-01` |
 | `gemini` | `openai-to-gemini-transformer` | optional, default `v1beta` |
 | `awsbedrock` | `openai-to-bedrock-transformer` (Converse) | — |
@@ -243,19 +246,19 @@ An endpoint update that would stop it serving a Model it serves today is refused
 
 ## Route between targets
 
-A Model with more than one target needs a routing policy, and any model routing policy works. Its parameters are the policy's own, as the policy hub describes them. Where a parameter names a model (`model`, `defaultModel`, `modelName`), give a target's name or its upstream model. Where it names a provider (`provider`, `defaultProvider`, `providerName`), give the target's provider id; it is optional.
+A Model with more than one target needs a routing policy, and any model routing policy works. Its parameters are the policy's own, as the policy hub describes them. Where a parameter names a model (`model`, `defaultModel`, `modelName`), give a target's `alias` or its `name`. Where it names a provider (`provider`, `defaultProvider`, `providerName`), give the target's provider handle; it is optional.
 
 ```yaml
 spec:
   modelName: chat
   endpoints: [wso2]
   targets:
-    - name: primary
-      provider: { id: openai-prod }
-      upstreamModel: gpt-4o
-    - name: secondary
-      provider: { id: anthropic-prod }
-      upstreamModel: claude-sonnet-4-5
+    - name: gpt-4o
+      provider: openai-prod
+      alias: primary
+    - name: claude-sonnet-4-5
+      provider: anthropic-prod
+      alias: secondary
   routing:
     policy:
       name: model-weighted-round-robin
@@ -270,15 +273,15 @@ spec:
 
 The router's parameters are passed to it as written. The gateway matches each choice the router makes to a target, in this order:
 
-1. a provider and upstream model that belong to one target;
-2. a target's name, with no provider or that target's own;
+1. a provider and model name that belong to one target;
+2. a target's alias (its `name`, when it has no alias), with no provider or that target's own;
 3. a provider only one target uses;
-4. an upstream model only one target uses;
+4. a model name only one target uses;
 5. otherwise the first target.
 
-The request goes to the target matched, with that target's upstream model. Nothing is checked when the Model is saved: a value that matches no target, such as a misspelt name, sends its requests to the first target.
+The request goes to the target matched, asking its provider for the target's `name`. Nothing is checked when the Model is saved: a value that matches no target, such as a misspelt name, sends its requests to the first target.
 
-`llm-header-router` names only a provider, so its mappings give the target's provider id (`provider`, `defaultProvider`). The cost-based router's `modelBudgets[].model` is matched against the model the client asked for, which is the Model's `modelName`, not against a target.
+`llm-header-router` names only a provider, so its mappings give the target's provider handle (`provider`, `defaultProvider`). The cost-based router's `modelBudgets[].model` is matched against the model the client asked for, which is the Model's `modelName`, not against a target.
 
 A provider whose upstream credential is `oauth2` can be combined with other providers only when the router names the provider before the request body is read: a round-robin router whose entries give `provider`, or `llm-header-router`. The token is acquired before the body is read, and an entry that names only a model is matched after it.
 
@@ -315,7 +318,7 @@ A Model's `spec.faultPolicies` run when a request for it fails, before the endpo
 Requests are reported under the model endpoint that received them, with:
 - the provider that actually served them, not the endpoint's template;
 - as the model, the one that served them, as its provider named it (for example `gpt-4o-mini-2024-07-18`), and as the requested model, the Model's name;
-- a `modelAnalytics` block naming the Model, its target and the upstream model.
+- a `modelAnalytics` block naming the Model, the target that served the request (by its alias, or its `name` when it has none) and the model its provider was asked for.
 
 A request to a routed provider is reported once, by the model endpoint.
 
