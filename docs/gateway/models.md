@@ -2,48 +2,45 @@
 
 Two kinds work together to serve AI models from the gateway:
 
-- A **Model endpoint** (`ModelEndpoint`) is the API clients call. It has a context, a wire format (OpenAI, Anthropic or Gemini), its own policies, its own keys and a model catalog. The gateway provisions one, `wso2`, at `/wso2/v1`; you can add more.
+- A **Model endpoint** (`ModelEndpoint`) is the API clients call. It has a context, a wire format (OpenAI, Anthropic or Gemini), its own policies, its own keys and a model catalog. The gateway provisions one, `openai`, at `/openai/v1`; you can add more.
 - A **Model** (`Model`) is what clients name in a request. It lists the endpoints that serve it, and its **targets**: models on your LLM providers that can answer for it.
 
 A client calls an endpoint, names a Model, and the gateway routes the request to one of that Model's targets. When the target's provider does not speak the endpoint's format, the endpoint's transformer for that provider converts the request and the response.
 
 ```
-client ──POST /wso2/v1/chat/completions {"model": "gpt-4o", ...}──▶ ModelEndpoint "wso2" (OpenAI)
-                                                                    │
-                                  Model "gpt-4o" ── targets ──┬─▶ openai-prod / gpt-4o
-                                                              └─▶ azure-eu    / gpt-4o-deployment
+client ──POST /openai/v1/chat/completions {"model": "gpt-4o", ...}──▶ ModelEndpoint "openai" (OpenAI)
+                                                                      │
+                                    Model "gpt-4o" ── targets ──┬─▶ openai-prod / gpt-4o
+                                                                └─▶ azure-eu    / gpt-4o-deployment
 ```
 
 Use Models when applications should name *what* they want — a model — and leave *where* it runs to the platform. You can then move a Model between providers, split its traffic or add a fallback, and no client changes its endpoint, key or request.
 
-## Turn the feature on
+## The default endpoint
 
-Models are off by default. Turn them on in the gateway controller configuration:
+Models are always available. The gateway controller configuration decides whether the gateway provisions a default endpoint, and where:
 
 ```toml
-[controller.models]
-enabled = true
-
 [controller.models.endpoint]
-provision = true              # create the default endpoint "wso2" (the default)
-context = "/wso2/v1"          # where the default endpoint is served
+provision = true              # create the default endpoint "openai" (the default)
+context = "/openai/v1"        # where the default endpoint is served (the default)
 max_request_body_bytes = 0    # every endpoint's limit; 0 = router.http_listener.per_connection_buffer_limit_bytes
 ```
 
-On startup the gateway creates the endpoint `wso2`:
+On startup the gateway creates the endpoint `openai`:
 - in the OpenAI format;
 - authenticating with `api-key-auth` on `Authorization: Bearer <key>`, which is what every OpenAI client library sends;
 - with transformers for the provider templates it ships with (see [Transformers](#transformers)).
 
-If another artifact already serves the configured context when the gateway first provisions `wso2`, or after you change the context, the gateway refuses to start instead, so the endpoint never takes over something you own. Endpoint writes are checked the same way: an endpoint cannot take a context another endpoint or API serves.
+If another artifact already serves the configured context when the gateway first provisions `openai`, or after you change the context, the gateway refuses to start instead, so the endpoint never takes over something you own. That includes the first start after an upgrade: a gateway with an API, LLM provider or proxy at `/openai/v1` on the same vhost will not start until you move it, set another `context`, or set `provision = false`. Endpoint writes are checked the same way: an endpoint cannot take a context another endpoint or API serves.
 
 Other kinds do not check model endpoints, so an API created later at an endpoint's context is not refused. Requests there may then reach either, and the controller logs the conflict at startup; move one of them.
 
-While provisioning is on, `wso2` belongs to the gateway:
+While provisioning is on, `openai` belongs to the gateway:
 - It cannot be created or deleted through the API.
 - Its context always comes from `controller.models.endpoint.context`.
 
-An admin may still change its policies, transformers, display name and resilience settings. The transformers are written once, when the endpoint is first created, and an upgrade never rewrites them. With `provision = false`, `wso2` is an ordinary endpoint you create yourself.
+An admin may still change its policies, transformers, display name and resilience settings. The transformers are written once, when the endpoint is first created, and an upgrade never rewrites them. With `provision = false`, `openai` is an ordinary endpoint you create yourself.
 
 ## Model endpoints
 
@@ -55,7 +52,7 @@ metadata:
 spec:
   displayName: Partner Model Endpoint   # unique among the gateway's endpoints
   version: v1.0
-  context: /partners/v1                 # required for every endpoint but wso2
+  context: /partners/v1                 # required for every endpoint but the provisioned one
   vhost: partners-ai.example.com        # optional
   inboundTemplate: openai               # the wire format; openai (default), anthropic or gemini
   policies:                             # optional; see below
@@ -105,7 +102,7 @@ spec:
   displayName: GPT-4o
   version: v1.0
   modelName: gpt-4o                # what clients send as the model
-  endpoints: [wso2]                # the endpoints that serve it (required)
+  endpoints: [openai]                # the endpoints that serve it (required)
   targets:
     - name: gpt-4o                 # the model, as the provider knows it
       provider: openai-prod        # an LLM provider
@@ -128,12 +125,12 @@ Only admins can create, update or delete Models; developers can list and read th
 Then call it like any OpenAI model:
 
 ```bash
-curl http://localhost:8080/wso2/v1/chat/completions \
+curl http://localhost:8080/openai/v1/chat/completions \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
-The endpoint's catalog, `GET /wso2/v1/models`, lists the Models it serves.
+The endpoint's catalog, `GET /openai/v1/models`, lists the Models it serves.
 
 The response names the Model as well: its `model` (`modelVersion` on a Gemini endpoint) is the `modelName` the client sent, whichever target answered, in every streamed event as in a whole response. Which model served the request is reported in [analytics](#analytics), not to the client.
 
@@ -227,7 +224,7 @@ Within an entry:
 - `params` are passed to the policy. `{apiVersion}` (or `{apiVersion:<default>}`) is filled from the provider's `spec.upstream.apiVersion`. `providerId` is set by the gateway.
 - `upstreamPaths` are the paths the transformer writes, with `{upstreamModel}` (the target's `name`) and `{apiVersion}` placeholders. They are used only to check that a routed provider's `accessControl` allows them.
 
-The provisioned `wso2` endpoint starts with these entries:
+The provisioned `openai` endpoint starts with these entries:
 
 | Template | Transformer | Provider API version (`spec.upstream.apiVersion`) |
 |---|---|---|
@@ -251,7 +248,7 @@ A Model with more than one target needs a routing policy, and any model routing 
 ```yaml
 spec:
   modelName: chat
-  endpoints: [wso2]
+  endpoints: [openai]
   targets:
     - name: gpt-4o
       provider: openai-prod
@@ -295,7 +292,7 @@ An endpoint that authenticates with `api-key-auth` takes two kinds of key:
 | Model key | `POST /models/{name}/api-keys` | that Model only, on every endpoint serving it that uses `api-key-auth` | that Model only |
 
 ```bash
-curl -u admin:admin -X POST http://localhost:9090/api/management/v1/model-endpoints/wso2/api-keys \
+curl -u admin:admin -X POST http://localhost:9090/api/management/v1/model-endpoints/openai/api-keys \
   -H 'Content-Type: application/json' -d '{"name": "team-a"}'
 curl -u admin:admin -X POST http://localhost:9090/api/management/v1/models/gpt-4o/api-keys \
   -H 'Content-Type: application/json' -d '{"name": "gpt-4o-app"}'

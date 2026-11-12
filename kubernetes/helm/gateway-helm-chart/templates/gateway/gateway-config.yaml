@@ -175,10 +175,6 @@ data:
     {{- end }}
 
     {{- with $gc.models }}
-    [controller.models]
-    {{- if hasKey . "enabled" }}
-    enabled = {{ .enabled }}
-    {{- end }}
     {{- with .endpoint }}
 
     [controller.models.endpoint]

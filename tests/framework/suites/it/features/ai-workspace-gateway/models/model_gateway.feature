@@ -22,7 +22,7 @@ Feature: Model gateway
   I want to serve Models on OpenAI-compatible model endpoints
   So that a client names a model and the gateway routes it to one of the Model's targets
 
-  The gateway provisions the default model endpoint, "wso2", at /wso2/v1. A model endpoint
+  The gateway provisions the default model endpoint, "openai", at /openai/v1. A model endpoint
   dispatches each chat completions request on its "model" field to that Model's chain, which
   routes it to a target: directly, for a provider with exposure "none", or through the
   provider's own route. Providers forward to the testbench echo service, which reflects the
@@ -34,33 +34,35 @@ Feature: Model gateway
     And I authenticate using basic auth as "admin"
 
   Scenario: The default model endpoint is provisioned and protected
-    When I send a "GET" request to the "gateway-controller" service at "/model-endpoints/wso2"
+    When I send a "GET" request to the "gateway-controller" service at "/model-endpoints/openai"
     Then the response status code should be 200
     And the JSON response field "kind" should be "ModelEndpoint"
-    And the JSON response field "spec.context" should be "/wso2/v1"
+    And the JSON response field "spec.context" should be "/openai/v1"
     And the JSON response field "spec.policies[0].name" should be "api-key-auth"
     And the JSON response field "status.state" should be "deployed"
     And the response body should contain "openai-to-anthropic-transformer"
     And the response body should contain "openai-to-bedrock-transformer"
 
-    When I send a "GET" request to the "gateway-controller" service at "/llm-proxies/wso2"
+    When I send a "GET" request to the "gateway-controller" service at "/llm-proxies/openai"
     Then the response status code should be 404
 
-    When I delete the model endpoint "wso2"
+    When I delete the model endpoint "openai"
     Then the response status code should be 409
 
-    When I update model endpoint "wso2" from "resources/templates/model-endpoint.yaml" with values:
-      | name        | wso2                      |
+    When I update model endpoint "openai" from "resources/templates/model-endpoint.yaml" with values:
+      | name        | openai                    |
       | apiVersion  | ${CTX:gatewaySpecVersion} |
-      | displayName | WSO2 Model Endpoint       |
+      | displayName | OpenAI Model Endpoint     |
       | version     | v1.0                      |
       | context     | /elsewhere                |
     Then the response status code should be 409
 
   Scenario: Requests are authenticated before anything else
+    # The provisioned endpoint reaches the router through the event listener, within one
+    # event hub poll of the gateway starting, so the first request waits for it.
     When I clear all headers
     And I set header "Content-Type" to "application/json"
-    And I send a "POST" request to "/wso2/v1/chat/completions" with body:
+    And I send a "POST" request to "/openai/v1/chat/completions" until status 401 with body:
       """
       {"model": "anything", "messages": [{"role": "user", "content": "Hello"}]}
       """
@@ -68,7 +70,7 @@ Feature: Model gateway
     And the JSON response field "error.type" should be "authentication_error"
     And the JSON response field "error.message" should be "Valid API key required"
 
-    When I send a "GET" request to "/wso2/v1/models"
+    When I send a "GET" request to "/openai/v1/models"
     Then the response status code should be 401
     And the JSON response field "error.type" should be "authentication_error"
 
@@ -78,19 +80,19 @@ Feature: Model gateway
     And I generate a unique resource name from "developer-model" and store it as "model"
     And I authenticate using basic auth as "developer"
 
-    When I send a "GET" request to the "gateway-controller" service at "/model-endpoints/wso2"
+    When I send a "GET" request to the "gateway-controller" service at "/model-endpoints/openai"
     Then the response status code should be 200
     When I send a "GET" request to the "gateway-controller" service at "/model-endpoints"
     Then the response status code should be 200
     When I send a "GET" request to the "gateway-controller" service at "/models"
     Then the response status code should be 200
 
-    When I update model endpoint "wso2" from "resources/templates/model-endpoint.yaml" with values:
-      | name        | wso2                      |
+    When I update model endpoint "openai" from "resources/templates/model-endpoint.yaml" with values:
+      | name        | openai                    |
       | apiVersion  | ${CTX:gatewaySpecVersion} |
       | displayName | Renamed by a developer    |
       | version     | v1.0                      |
-      | context     | /wso2/v1                  |
+      | context     | /openai/v1                |
     Then the response status code should be 403
     When I create model endpoint from "resources/templates/model-endpoint.yaml" with values:
       | name        | ${CTX:endpoint}           |
@@ -99,7 +101,7 @@ Feature: Model gateway
       | version     | v1.0                      |
       | context     | ${CTX:endpointContext}    |
     Then the response status code should be 403
-    When I delete the model endpoint "wso2"
+    When I delete the model endpoint "openai"
     Then the response status code should be 403
     When I create Model from "resources/templates/model.yaml" with values:
       | name        | ${CTX:model}                                                                     |
@@ -107,14 +109,14 @@ Feature: Model gateway
       | displayName | ${CTX:model}                                                                     |
       | version     | v1.0                                                                             |
       | modelName   | ${CTX:model}                                                                     |
-      | endpoints   | ["wso2"]                                                                         |
+      | endpoints   | ["openai"]                                                                         |
       | targets     | [{"name": "gpt-4o", "provider": "any-provider"}] |
     Then the response status code should be 403
 
     Given I authenticate using basic auth as "admin"
-    When I send a "GET" request to the "gateway-controller" service at "/model-endpoints/wso2"
+    When I send a "GET" request to the "gateway-controller" service at "/model-endpoints/openai"
     Then the response status code should be 200
-    And the JSON response field "spec.displayName" should be "WSO2 Model Endpoint"
+    And the JSON response field "spec.displayName" should be "OpenAI Model Endpoint"
 
   Scenario: A Model must name endpoints that exist
     Given I generate a unique resource name from "no-endpoints-model" and store it as "model"
@@ -125,7 +127,7 @@ Feature: Model gateway
       | displayName | ${CTX:model}                                                                                                                                                       |
       | version     | v1.0                                                                                                                                                               |
       | modelName   | ${CTX:model}                                                                                                                                                       |
-      | endpoints   | ["wso2"]                                                                                                                                                           |
+      | endpoints   | ["openai"]                                                                                                                                                           |
       | targets     | []                                                                                                                                                                 |
       | spec        | {"displayName": "${CTX:model}", "version": "v1.0", "modelName": "${CTX:model}", "targets": [{"name": "gpt-4o", "provider": "any-provider"}]} |
     Then the response status code should be 400
@@ -137,7 +139,7 @@ Feature: Model gateway
       | displayName | ${CTX:model}                                                                     |
       | version     | v1.0                                                                             |
       | modelName   | ${CTX:model}                                                                     |
-      | endpoints   | ["wso2", "${CTX:missingEndpoint}"]                                               |
+      | endpoints   | ["openai", "${CTX:missingEndpoint}"]                                               |
       | targets     | [{"name": "gpt-4o", "provider": "any-provider"}] |
     Then the response status code should be 400
     And the response body should contain "spec.endpoints[1]: model endpoint '${CTX:missingEndpoint}' not found"

@@ -22,7 +22,7 @@ Feature: Several model endpoints on one gateway
   I want several model endpoints on one gateway
   So that different consumers get their own context, keys and catalog
 
-  A gateway serves any number of model endpoints beside the provisioned "wso2". A Model names
+  A gateway serves any number of model endpoints beside the provisioned "openai". A Model names
   the endpoints that serve it; each endpoint has its own context, policies, keys and catalog, and
   serves only the Models that name it.
 

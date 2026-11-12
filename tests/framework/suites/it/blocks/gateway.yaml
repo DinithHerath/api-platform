@@ -383,13 +383,12 @@ blocks:
         features:
           - features/gateway/mtls/outbound.feature
 
-  # Models and model endpoints are served only with controller.models on, which also provisions
-  # the shared default endpoint "wso2". Scenarios that send traffic serve their Models on an
-  # endpoint of their own, so their routes, keys and analytics events are theirs alone.
+  # Every gateway provisions the shared default model endpoint "openai". Scenarios that send
+  # traffic serve their Models on an endpoint of their own, so their routes, keys and analytics
+  # events are theirs alone.
   - name: gateway-models
     components:
       - name: platform-gateway
-        overlay: tests/framework/core/catalog/overlays/models.toml
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench

@@ -60,7 +60,7 @@ An LLM Proxy lets developers create their own endpoint that consumes an LLM Prov
 
 ### Model
 
-A Model is an AI model the gateway serves on its model endpoints. A model endpoint is one OpenAI, Anthropic or Gemini compatible API, such as the default `wso2` at `/wso2/v1`, that answers for every Model naming it. Clients name a Model in their request, and the gateway routes the request to one of the Model's targets, a model on one of your LLM providers, transforming it for providers that do not speak the endpoint's format. With Models, you can:
+A Model is an AI model the gateway serves on its model endpoints. A model endpoint is one OpenAI, Anthropic or Gemini compatible API, such as the default `openai` at `/openai/v1`, that answers for every Model naming it. Clients name a Model in their request, and the gateway routes the request to one of the Model's targets, a model on one of your LLM providers, transforming it for providers that do not speak the endpoint's format. With Models, you can:
 
 - Give every application one endpoint and one key, whatever provider a model runs on
 - Issue keys for a whole endpoint, or for a single Model
