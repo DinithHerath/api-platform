@@ -237,3 +237,15 @@ func TestTemplateMatches(t *testing.T) {
 	assert.False(t, TemplateMatches(nil, "anthropic"))
 	assert.False(t, TemplateMatches(template("custom", ""), ""))
 }
+
+// A provider that passes through is called on the endpoint's own dispatch paths:
+// nothing rewrites the path, so paths its entry declares are not the ones used.
+func TestTargetPaths_PassthroughUsesDispatchPaths(t *testing.T) {
+	declared := []string{"/declared"}
+	entry := &api.ModelEndpointTransformer{Template: ptr("xai"), Type: "none", UpstreamPaths: &declared}
+	ep := Endpoint{DispatchPaths: []string{"/chat/completions"}}
+	paths, known, err := targetPaths(entry, nil, &Target{UpstreamModel: "grok-3"}, ep)
+	require.NoError(t, err)
+	assert.True(t, known)
+	assert.Equal(t, []string{"/chat/completions"}, paths)
+}

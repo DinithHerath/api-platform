@@ -1310,3 +1310,78 @@ func TestPolicyValidator_OperationLevelFaultPoliciesAreValidated(t *testing.T) {
 	}
 	assert.True(t, found, "the error must identify the operation and the entry index, got %+v", errs)
 }
+
+// routerDefs is a routing policy whose weights are integers, as the model routers
+// declare them.
+func routerDefs() map[string]models.PolicyDefinition {
+	return map[string]models.PolicyDefinition{
+		"router|v1.0.0": {
+			Name: "router", Version: "v1.0.0",
+			Parameters: &map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"models": map[string]interface{}{
+						"type": "array",
+						"items": map[string]interface{}{
+							"type":       "object",
+							"properties": map[string]interface{}{"weight": map[string]interface{}{"type": "integer"}},
+						},
+					},
+				},
+			},
+		},
+		"counter|v1.0.0": {
+			Name: "counter", Version: "v1.0.0",
+			Parameters: &map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{"count": map[string]interface{}{"type": "integer"}},
+			},
+		},
+	}
+}
+
+func modelWithRouting(weight interface{}) *api.ModelConfiguration {
+	params := map[string]interface{}{"models": []interface{}{map[string]interface{}{"weight": weight}}}
+	return &api.ModelConfiguration{Spec: api.ModelConfigData{
+		Routing:  &api.ModelRouting{Policy: api.ModelRoutingPolicy{Name: "router", Version: "v1"}, Params: &params},
+		Policies: &[]api.Policy{{Name: "counter", Version: "v1", Params: &map[string]interface{}{"count": "5"}}},
+	}}
+}
+
+func routedWeight(m *api.ModelConfiguration) interface{} {
+	return (*m.Spec.Routing.Params)["models"].([]interface{})[0].(map[string]interface{})["weight"]
+}
+
+func TestPolicyValidator_ModelValidationLeavesNestedParamsUntouched(t *testing.T) {
+	m := modelWithRouting("2")
+	errs := NewPolicyValidator(routerDefs(), nil).ValidateModelPolicies(m)
+	assert.Empty(t, errs, "a numeric string validates as the integer it becomes")
+	assert.Equal(t, "2", routedWeight(m), "validation coerces a copy, nested values included")
+}
+
+func TestPolicyValidator_CoerceModelPolicies(t *testing.T) {
+	m := modelWithRouting("2")
+	NewPolicyValidator(routerDefs(), nil).CoerceModelPolicies(m)
+	assert.EqualValues(t, 2, routedWeight(m), "routing params reach the router typed")
+	assert.EqualValues(t, 5, (*(*m.Spec.Policies)[0].Params)["count"])
+}
+
+func TestPolicyValidator_CoerceModelEndpointPolicies(t *testing.T) {
+	ep := &api.ModelEndpointConfiguration{Spec: api.ModelEndpointConfigData{
+		Policies: &[]api.Policy{{Name: "counter", Version: "v1", Params: &map[string]interface{}{"count": "7"}}},
+	}}
+	NewPolicyValidator(routerDefs(), nil).CoerceModelEndpointPolicies(ep)
+	assert.EqualValues(t, 7, (*(*ep.Spec.Policies)[0].Params)["count"])
+}
+
+func TestWithPlaceholderStandIns(t *testing.T) {
+	cases := map[string]string{
+		"{apiVersion}":                    "v1",
+		"{apiVersion:v1beta}":             "v1beta",
+		"/models/{apiVersion:2023-06-01}": "/models/2023-06-01",
+		"no placeholder":                  "no placeholder",
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, withPlaceholderStandIns(in), in)
+	}
+}

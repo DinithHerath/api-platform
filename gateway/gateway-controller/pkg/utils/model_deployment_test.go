@@ -960,3 +960,79 @@ func TestModelService_RefusedWhereARoutedProviderRefusesThePath(t *testing.T) {
 	assert.Contains(t, err.Error(), "spec.endpoints[0]: provider 'locked' does not allow POST /chat/completions")
 	assert.Contains(t, err.Error(), "on endpoint 'openai'")
 }
+
+func llmProviderBody(handle, exposure string) map[string]any {
+	spec := map[string]any{
+		"displayName": handle, "version": "v1.0", "template": "openai", "exposure": exposure,
+		"upstream": map[string]any{
+			"url":  "https://api.openai.com/v1",
+			"auth": map[string]any{"type": "api-key", "header": "Authorization", "value": "Bearer sk-upstream"},
+		},
+	}
+	if exposure == "route" {
+		spec["context"] = "/" + handle
+		spec["accessControl"] = map[string]any{"mode": "allow_all"}
+	}
+	return map[string]any{
+		"apiVersion": "gateway.api-platform.wso2.com/v1", "kind": "LlmProvider",
+		"metadata": map[string]any{"name": handle}, "spec": spec,
+	}
+}
+
+func llmProxyBody(handle, provider string) map[string]any {
+	return map[string]any{
+		"apiVersion": "gateway.api-platform.wso2.com/v1", "kind": "LlmProxy",
+		"metadata": map[string]any{"name": handle},
+		"spec": map[string]any{
+			"displayName": handle, "version": "v1.0", "context": "/" + handle,
+			"provider": map[string]any{"id": provider},
+		},
+	}
+}
+
+// An LLM proxy reaches its providers through their routes, and a provider with
+// exposure none publishes none.
+func TestLLMProxy_RefusesAProviderWithoutARoute(t *testing.T) {
+	f := newModelServiceFixture(t)
+	_, err := f.svc.CreateLLMProvider(f.params(llmProviderBody("hidden", "none")))
+	require.NoError(t, err)
+
+	_, err = f.svc.CreateLLMProxy(f.params(llmProxyBody("proxy", "hidden")))
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrLLMProxyValidation))
+	assert.Contains(t, err.Error(), "provider 'hidden' has exposure 'none'")
+}
+
+func TestLLMProvider_KeepsItsRouteWhileAProxyUsesIt(t *testing.T) {
+	f := newModelServiceFixture(t)
+	_, err := f.svc.CreateLLMProvider(f.params(llmProviderBody("shared", "route")))
+	require.NoError(t, err)
+	_, err = f.svc.CreateLLMProxy(f.params(llmProxyBody("proxy", "shared")))
+	require.NoError(t, err)
+
+	stepPastLastWrite()
+	_, err = f.svc.UpdateLLMProvider("shared", f.params(llmProviderBody("shared", "none")))
+	require.Error(t, err)
+	assert.True(t, storage.IsConflictError(err))
+	assert.Contains(t, err.Error(), "LLM proxy(s) proxy")
+}
+
+// Moving the default endpoint to a new context keeps the state an operator set.
+func TestModelEndpointProvisioning_KeepsAnUndeployedEndpointUndeployed(t *testing.T) {
+	f := newModelServiceFixture(t)
+	require.NoError(t, f.svc.ProvisionModelEndpoint(f.logger))
+
+	stepPastLastWrite()
+	_, err := f.svc.UpdateModelEndpoint(models.DefaultModelEndpointHandle, f.params(endpointBody(models.DefaultModelEndpointHandle, "",
+		func(spec map[string]any) { spec["deploymentState"] = "undeployed" })))
+	require.NoError(t, err)
+
+	f.svc.SetModelsConfig(config.ModelsConfig{Endpoint: config.ModelEndpointConfig{Provision: true, Context: "/llm/v1"}})
+	stepPastLastWrite()
+	require.NoError(t, f.svc.ProvisionModelEndpoint(f.logger))
+
+	cfg, err := f.db.GetConfigByKindAndHandle(models.KindModelEndpoint, models.DefaultModelEndpointHandle)
+	require.NoError(t, err)
+	assert.Equal(t, "/llm/v1", *cfg.SourceConfiguration.(api.ModelEndpointConfiguration).Spec.Context)
+	assert.Equal(t, models.StateUndeployed, cfg.DesiredState)
+}

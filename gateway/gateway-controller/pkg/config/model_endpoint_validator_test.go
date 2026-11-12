@@ -170,6 +170,14 @@ func TestValidateModelEndpointTransformers(t *testing.T) {
 		{"empty placeholder default", []api.ModelEndpointTransformer{transformerEntry(func(e *api.ModelEndpointTransformer) {
 			e.Params = &map[string]interface{}{"v": "{apiVersion:}"}
 		})}, "t[0].params.v"},
+		{"misspelt placeholder", []api.ModelEndpointTransformer{transformerEntry(func(e *api.ModelEndpointTransformer) {
+			e.Params = &map[string]interface{}{"v": "{apiVersionTypo}"}
+		})}, "t[0].params.v"},
+		{"unterminated placeholder", []api.ModelEndpointTransformer{transformerEntry(func(e *api.ModelEndpointTransformer) {
+			e.Params = &map[string]interface{}{"v": "{apiVersion"}
+		})}, "t[0].params.v"},
+		{"none with upstream paths", []api.ModelEndpointTransformer{{Template: stringPtr("xai"), Type: "none",
+			UpstreamPaths: &[]string{"/v1/chat/completions"}}}, "t[0].upstreamPaths"},
 		{"relative path", []api.ModelEndpointTransformer{transformerEntry(func(e *api.ModelEndpointTransformer) {
 			e.UpstreamPaths = &[]string{"v1/messages"}
 		})}, "t[0].upstreamPaths[0]"},

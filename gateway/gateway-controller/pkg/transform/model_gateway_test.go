@@ -396,7 +396,7 @@ func TestModelGateway_CompilesRoutesChainsAndClusters(t *testing.T) {
 	assert.Empty(t, unrouted.Endpoints)
 	assert.Empty(t, unrouted.URL, "the default upstream is not a definition a policy redirects to")
 
-	// The direct credential is redacted from policy-chain logs.
+	// No empty string is recorded as a sensitive value.
 	assert.NotContains(t, rdc.SensitiveValues, "")
 }
 
