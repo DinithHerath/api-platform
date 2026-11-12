@@ -5281,12 +5281,12 @@ and
 |---|---|---|---|---|
 |displayName|string|true|none|Human-readable endpoint name, unique among the gateway's model endpoints (API-level rate-limit counters key on it). Only letters, numbers, spaces, hyphens, underscores and dots.|
 |version|string|true|none|Semantic version of the endpoint|
-|context|string|false|none|Base path the endpoint is served at (must start with /, no trailing slash). Required for every endpoint but the provisioned `wso2`, whose context is set by `controller.models.endpoint.context`. The context and vhost must not clash with any other artifact on the gateway.|
+|context|string|false|none|Base path the endpoint is served at (must start with /, no trailing slash). Required for every endpoint but the provisioned `openai`, whose context is set by `controller.models.endpoint.context`. The context and vhost must not clash with any other artifact on the gateway.|
 |vhost|string|false|none|Virtual host the endpoint is served on; the gateway's default vhost when absent. Wildcards are only allowed in the left-most label.|
 |inboundTemplate|string|false|none|Handle of the provider template describing the wire format clients send, as on an LLM proxy. The model is read where the template's `requestModel` says. `openai` (the default), `anthropic` and `gemini` are accepted: the formats the gateway has an inbound profile for, which fixes the endpoint's operations, catalog and error bodies.|
 |policies|[[Policy](#schemapolicy)]|false|none|Endpoint-wide policies, run first in every Model chain and in the catalog chain. Attached at API level, so an endpoint rate limit is shared by every Model. When omitted, defaults to api-key-auth on `Authorization: Bearer <key>`. An explicit list is used as given, so an empty list serves the endpoint without authentication.|
 |faultPolicies|[[Policy](#schemapolicy)]|false|none|Policies executed when any request on the endpoint fails, over the error response; run after a Model's own fault policies.|
-|transformers|[[ModelEndpointTransformer](#schemamodelendpointtransformer)]|false|none|The transformers that convert this endpoint's inbound format to a provider's. There are no built-in defaults: a provider whose template is the endpoint's inbound template needs none, and any other provider needs an entry here, matched by provider handle first and template second. A Model with a provider no entry matches is left out of this endpoint.|
+|transformers|[[ModelEndpointTransformer](#schemamodelendpointtransformer)]|false|none|The transformers that convert this endpoint's inbound format to a provider's. There are no built-in defaults: a provider whose template is the endpoint's inbound template needs none, and any other provider needs an entry here, matched by provider handle first and template second. Saving a deployed Model with a provider no entry matches is refused with 400, and a change to this list that would stop the endpoint serving a deployed Model is refused with 409.|
 |resilience|[Resilience](#schemaresilience)|false|none|Route timeouts for the endpoint's dispatch and catalog operations.|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. An undeployed endpoint serves nothing; its Models and keys are kept, and Models keep serving on their other endpoints.|
 
@@ -5329,7 +5329,7 @@ One transformer entry: the LLM proxy `transformer` fields (`type`, `version`, `p
 |type|string|true|none|An installed transformer policy name, or `none` for no transformer (a provider that already speaks the endpoint's format).|
 |version|string|false|none|Major-only policy version, required unless `type` is `none`.|
 |params|object|false|none|Parameters passed to the transformer. `providerId` is injected by the gateway and cannot be set. String values may use `{apiVersion}` or `{apiVersion:<default>}`, filled from the provider's `spec.upstream.apiVersion`.|
-|upstreamPaths|[string]|false|none|The paths the transformer writes upstream, with `{upstreamModel}` and `{apiVersion}` placeholders. Used only to check that a provider reached through its own route allows them (accessControl).|
+|upstreamPaths|[string]|false|none|The paths the transformer writes upstream, with `{upstreamModel}` (the target's `name`) and `{apiVersion}` placeholders. Used only to check that a provider reached through its own route allows them (accessControl).|
 
 ## ModelConfigurationRequest
 
@@ -5350,15 +5350,13 @@ One transformer entry: the LLM proxy `transformer` fields (`type`, `version`, `p
     "version": "v1.0",
     "modelName": "gpt-4o",
     "endpoints": [
-      "wso2"
+      "openai"
     ],
     "targets": [
       {
-        "name": "openai",
-        "provider": {
-          "id": "wso2-openai-provider"
-        },
-        "upstreamModel": "gpt-4o"
+        "name": "gpt-4o",
+        "provider": "wso2-openai-provider",
+        "alias": "openai"
       }
     ]
   }
@@ -5401,15 +5399,13 @@ One transformer entry: the LLM proxy `transformer` fields (`type`, `version`, `p
     "version": "v1.0",
     "modelName": "gpt-4o",
     "endpoints": [
-      "wso2"
+      "openai"
     ],
     "targets": [
       {
-        "name": "openai",
-        "provider": {
-          "id": "wso2-openai-provider"
-        },
-        "upstreamModel": "gpt-4o"
+        "name": "gpt-4o",
+        "provider": "wso2-openai-provider",
+        "alias": "openai"
       }
     ]
   },
@@ -5452,15 +5448,13 @@ and
   "version": "v1.0",
   "modelName": "gpt-4o",
   "endpoints": [
-    "wso2"
+    "openai"
   ],
   "targets": [
     {
-      "name": "openai",
-      "provider": {
-        "id": "wso2-openai-provider"
-      },
-      "upstreamModel": "gpt-4o",
+      "name": "claude-haiku-5-5",
+      "provider": "acme-anthropic",
+      "alias": "claude",
       "auth": {
         "type": "api-key",
         "policyName": "string",
@@ -5508,7 +5502,7 @@ and
 |modelName|string|true|none|The name clients send for this Model, wherever the endpoint's inbound format carries the model (the `model` field for OpenAI and Anthropic, the path for Gemini). Unique across Models on this gateway. Matched exactly and case-sensitively.|
 |endpoints|[string]|true|none|Handles of the model endpoints that serve this Model. Required, with no implicit default. Each must name a model endpoint on this gateway, deployed or not; a save naming one that does not exist is refused with 400. A Model saved as deployed is also refused with 400 when a named endpoint cannot serve it, for example when it has no transformer for one of the Model's providers.|
 |targets|[[ModelTarget](#schemamodeltarget)]|true|none|The upstream models this Model can be served by. Each target is a pair of a deployed LLM provider and the model name that provider knows it by, and the pair is unique within the Model. With more than one target, `routing` is required to choose between them. The first target is the default: it serves a request the routing policy did not place.|
-|routing|[ModelRouting](#schemamodelrouting)|false|none|The routing policy that chooses a target per request. Any model routing policy can be used (round-robin, weighted round-robin, semantic, cost-based, time-based, intelligent routing, header routing). Its parameters are the policy's own, written as the policy defines them. A parameter that names a model (`model`, `defaultModel`, `modelName`) may give a target's name or its upstream model; one that names a provider gives a provider handle. At request time the gateway matches the policy's choice to one of the Model's targets, and a choice that matches none is served by the first target.|
+|routing|[ModelRouting](#schemamodelrouting)|false|none|The routing policy that chooses a target per request. Any model routing policy can be used (round-robin, weighted round-robin, semantic, cost-based, time-based, intelligent routing, header routing). Its parameters are the policy's own, written as the policy defines them. A parameter that names a model (`model`, `defaultModel`, `modelName`) may give a target's `alias` or its `name`; one that names a provider gives a provider handle. At request time the gateway matches the policy's choice to one of the Model's targets, and a choice that matches none is served by the first target.|
 |policies|[[Policy](#schemapolicy)]|false|none|Policies applied to every request for this Model, after the endpoint's own policies (authentication) and before routing. Policies here see the request and response in each endpoint's inbound format.|
 |faultPolicies|[[Policy](#schemapolicy)]|false|none|Ordered list of policies executed only when a request for this Model fails, over the error response. Run before the endpoint's own fault policies.|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. An undeployed Model stops resolving on every endpoint but its configuration is kept.|
@@ -5529,11 +5523,9 @@ and
 
 ```json
 {
-  "name": "openai",
-  "provider": {
-    "id": "wso2-openai-provider"
-  },
-  "upstreamModel": "gpt-4o",
+  "name": "claude-haiku-5-5",
+  "provider": "acme-anthropic",
+  "alias": "claude",
   "auth": {
     "type": "api-key",
     "policyName": "string",
@@ -5550,30 +5542,10 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|Name of this target, unique within the Model. A routing policy's model fields (`model`, `defaultModel`, `modelName`) may name the target by this name, as well as by its upstream model.|
-|provider|[ModelTargetProvider](#schemamodeltargetprovider)|true|none|none|
-|upstreamModel|string|true|none|The model name sent to the provider. For an Azure OpenAI provider this is the deployment name.|
+|name|string|true|none|The model name sent to the provider, as the provider knows it. For an Azure OpenAI provider this is the deployment name. A routing policy's model fields (`model`, `defaultModel`, `modelName`) may name the target by this name or by its `alias`.|
+|provider|string|true|none|Handle of a deployed LLM provider|
+|alias|string|false|none|A short name a routing policy's model fields may use for this target, in place of its `name`. Defaults to `name`, and unique within the Model, so two targets serving the same model through different providers need an alias on at least one of them.|
 |auth|[LLMUpstreamAuth](#schemallmupstreamauth)|false|none|Credential the gateway presents to a provider reached through its own route (`exposure: route`) — the same field, with the same rules, as `auth` on an LLM proxy's provider. Required when that provider's route authenticates with api-key-auth; rejected for a provider with `exposure: none`, which is called directly with the provider's own upstream credential. Write-only values are never returned and are inherited on an update that omits them.|
-
-## ModelTargetProvider
-
-<a id="schemamodeltargetprovider"></a>
-<a id="schema_ModelTargetProvider"></a>
-<a id="tocSmodeltargetprovider"></a>
-<a id="tocsmodeltargetprovider"></a>
-
-```json
-{
-  "id": "wso2-openai-provider"
-}
-
-```
-
-#### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|string|true|none|Handle of a deployed LLM provider|
 
 ## ModelRouting
 
@@ -5593,7 +5565,7 @@ and
 
 ```
 
-The routing policy that chooses a target per request. Any model routing policy can be used (round-robin, weighted round-robin, semantic, cost-based, time-based, intelligent routing, header routing). Its parameters are the policy's own, written as the policy defines them. A parameter that names a model (`model`, `defaultModel`, `modelName`) may give a target's name or its upstream model; one that names a provider gives a provider handle. At request time the gateway matches the policy's choice to one of the Model's targets, and a choice that matches none is served by the first target.
+The routing policy that chooses a target per request. Any model routing policy can be used (round-robin, weighted round-robin, semantic, cost-based, time-based, intelligent routing, header routing). Its parameters are the policy's own, written as the policy defines them. A parameter that names a model (`model`, `defaultModel`, `modelName`) may give a target's `alias` or its `name`; one that names a provider gives a provider handle. At request time the gateway matches the policy's choice to one of the Model's targets, and a choice that matches none is served by the first target.
 
 #### Properties
 

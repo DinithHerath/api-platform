@@ -20,7 +20,7 @@ curl -X POST http://localhost:9090/api/management/v1/model-endpoints \
 
 ```
 
-Add a model endpoint to the Gateway. A model endpoint is the client-facing API that serves Models: a request names a Model (in the body or the path, as the endpoint's inbound template says) and is dispatched to that Model's own policy chain. The handle `wso2` is reserved for the endpoint the gateway provisions when `controller.models.endpoint.provision` is set. Requires `controller.models.enabled`.
+Add a model endpoint to the Gateway. A model endpoint is the client-facing API that serves Models: a request names a Model (in the body or the path, as the endpoint's inbound template says) and is dispatched to that Model's own policy chain. The handle `openai` is reserved for the endpoint the gateway provisions when `controller.models.endpoint.provision` is set.
 
 > Payload
 
@@ -108,7 +108,7 @@ Required roles: `admin`
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Model endpoint created and deployed successfully|[ModelEndpointConfiguration](schemas.md#schemamodelendpointconfiguration)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed), or the models feature is disabled|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - an endpoint with the same handle or display name exists, the context and vhost are already used, or the handle is the reserved `wso2`|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - an endpoint with the same handle or display name exists, the context and vhost are already used, or the handle is the reserved `openai`|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## List all model endpoints
@@ -231,7 +231,7 @@ Status Code **200**
 |»»» spec|[ModelEndpointConfigData](schemas.md#schemamodelendpointconfigdata)|true|none|none|
 |»»»» displayName|string|true|none|Human-readable endpoint name, unique among the gateway's model endpoints (API-level rate-limit counters key on it). Only letters, numbers, spaces, hyphens, underscores and dots.|
 |»»»» version|string|true|none|Semantic version of the endpoint|
-|»»»» context|string|false|none|Base path the endpoint is served at (must start with /, no trailing slash). Required for every endpoint but the provisioned `wso2`, whose context is set by `controller.models.endpoint.context`. The context and vhost must not clash with any other artifact on the gateway.|
+|»»»» context|string|false|none|Base path the endpoint is served at (must start with /, no trailing slash). Required for every endpoint but the provisioned `openai`, whose context is set by `controller.models.endpoint.context`. The context and vhost must not clash with any other artifact on the gateway.|
 |»»»» vhost|string|false|none|Virtual host the endpoint is served on; the gateway's default vhost when absent. Wildcards are only allowed in the left-most label.|
 |»»»» inboundTemplate|string|false|none|Handle of the provider template describing the wire format clients send, as on an LLM proxy. The model is read where the template's `requestModel` says. `openai` (the default), `anthropic` and `gemini` are accepted: the formats the gateway has an inbound profile for, which fixes the endpoint's operations, catalog and error bodies.|
 |»»»» policies|[[Policy](schemas.md#schemapolicy)]|false|none|Endpoint-wide policies, run first in every Model chain and in the catalog chain. Attached at API level, so an endpoint rate limit is shared by every Model. When omitted, defaults to api-key-auth on `Authorization: Bearer <key>`. An explicit list is used as given, so an empty list serves the endpoint without authentication.|
@@ -240,13 +240,13 @@ Status Code **200**
 |»»»»» executionCondition|string|false|none|Expression controlling conditional execution of the policy|
 |»»»»» params|object|false|none|Arbitrary parameters for the policy (free-form key/value structure)|
 |»»»» faultPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Policies executed when any request on the endpoint fails, over the error response; run after a Model's own fault policies.|
-|»»»» transformers|[[ModelEndpointTransformer](schemas.md#schemamodelendpointtransformer)]|false|none|The transformers that convert this endpoint's inbound format to a provider's. There are no built-in defaults: a provider whose template is the endpoint's inbound template needs none, and any other provider needs an entry here, matched by provider handle first and template second. A Model with a provider no entry matches is left out of this endpoint.|
+|»»»» transformers|[[ModelEndpointTransformer](schemas.md#schemamodelendpointtransformer)]|false|none|The transformers that convert this endpoint's inbound format to a provider's. There are no built-in defaults: a provider whose template is the endpoint's inbound template needs none, and any other provider needs an entry here, matched by provider handle first and template second. Saving a deployed Model with a provider no entry matches is refused with 400, and a change to this list that would stop the endpoint serving a deployed Model is refused with 409.|
 |»»»»» provider|string|false|none|LLM provider handle this entry applies to. Wins over a `template` entry.|
 |»»»»» template|string|false|none|Provider template handle or template group this entry applies to.|
 |»»»»» type|string|true|none|An installed transformer policy name, or `none` for no transformer (a provider that already speaks the endpoint's format).|
 |»»»»» version|string|false|none|Major-only policy version, required unless `type` is `none`.|
 |»»»»» params|object|false|none|Parameters passed to the transformer. `providerId` is injected by the gateway and cannot be set. String values may use `{apiVersion}` or `{apiVersion:<default>}`, filled from the provider's `spec.upstream.apiVersion`.|
-|»»»»» upstreamPaths|[string]|false|none|The paths the transformer writes upstream, with `{upstreamModel}` and `{apiVersion}` placeholders. Used only to check that a provider reached through its own route allows them (accessControl).|
+|»»»»» upstreamPaths|[string]|false|none|The paths the transformer writes upstream, with `{upstreamModel}` (the target's `name`) and `{apiVersion}` placeholders. Used only to check that a provider reached through its own route allows them (accessControl).|
 |»»»» resilience|[Resilience](schemas.md#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 |»»»»» timeout|string|false|none|Maximum time for the entire route (request to upstream response). "0s" disables the timeout.|
 |»»»»» idleTimeout|string|false|none|Per-route stream idle timeout (overrides the listener stream idle timeout for this route). "0s" disables the timeout.|
@@ -384,7 +384,7 @@ curl -X PUT http://localhost:9090/api/management/v1/model-endpoints/{id} \
 
 ```
 
-Update a model endpoint. Every Model the endpoint serves is recompiled; an update that would leave a Model it serves today unable to compile (for example by removing the transformer that Model's provider needs) is refused, naming those Models. The context of the provisioned `wso2` endpoint is set by `controller.models.endpoint.context` and cannot be changed here.
+Update a model endpoint. Every Model the endpoint serves is recompiled; an update that would leave a Model it serves today unable to compile (for example by removing the transformer that Model's provider needs) is refused, naming those Models. The context of the provisioned `openai` endpoint is set by `controller.models.endpoint.context` and cannot be changed here.
 
 > Payload
 
@@ -493,7 +493,7 @@ curl -X DELETE http://localhost:9090/api/management/v1/model-endpoints/{id} \
 
 ```
 
-Delete a model endpoint and its API keys. Refused while a deployed Model names the endpoint in `spec.endpoints`, and for the provisioned `wso2` endpoint while `controller.models.endpoint.provision` is set.
+Delete a model endpoint and its API keys. Refused while a deployed Model names the endpoint in `spec.endpoints`, and for the provisioned `openai` endpoint while `controller.models.endpoint.provision` is set.
 
 ### Authentication
 
@@ -528,7 +528,7 @@ Required roles: `admin`
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Model endpoint deleted successfully|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Model endpoint not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|A deployed Model names the endpoint, or it is the provisioned `wso2` endpoint|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|A deployed Model names the endpoint, or it is the provisioned `openai` endpoint|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="delete-a-model-endpoint-responseschema">Response Schema</h3>

@@ -244,7 +244,6 @@ Base URLs:
 - [ModelConfiguration](schemas.md#modelconfiguration)
 - [ModelConfigData](schemas.md#modelconfigdata)
 - [ModelTarget](schemas.md#modeltarget)
-- [ModelTargetProvider](schemas.md#modeltargetprovider)
 - [ModelRouting](schemas.md#modelrouting)
 - [ModelRoutingPolicy](schemas.md#modelroutingpolicy)
 - [SecretConfigurationRequest](schemas.md#secretconfigurationrequest)

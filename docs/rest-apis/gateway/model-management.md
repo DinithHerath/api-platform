@@ -20,7 +20,7 @@ curl -X POST http://localhost:9090/api/management/v1/models \
 
 ```
 
-Add a Model to the Gateway. A Model is an AI model the gateway serves on the model endpoints it names in `spec.endpoints` (for example the gateway-provisioned `wso2`, by default at `/wso2/v1`): clients send the Model's `modelName` where the endpoint's inbound format carries the model, and the gateway routes the request to one of the Model's targets. The Model is not checked against its endpoints: one that an endpoint cannot serve is left out of that endpoint and the reason is logged. Requires `controller.models.enabled`.
+Add a Model to the Gateway. A Model is an AI model the gateway serves on the model endpoints it names in `spec.endpoints` (for example the gateway-provisioned `openai`, by default at `/openai/v1`): clients send the Model's `modelName` where the endpoint's inbound format carries the model, and the gateway routes the request to one of the Model's targets. A Model saved as deployed is refused with 400 when an endpoint it names cannot serve it; an undeployed Model is checked when it is deployed. A Model that a later provider change leaves unservable on an endpoint is left out of that endpoint and the reason is logged.
 
 > Payload
 
@@ -36,15 +36,13 @@ Add a Model to the Gateway. A Model is an AI model the gateway serves on the mod
     "version": "v1.0",
     "modelName": "gpt-4o",
     "endpoints": [
-      "wso2"
+      "openai"
     ],
     "targets": [
       {
-        "name": "openai",
-        "provider": {
-          "id": "wso2-openai-provider"
-        },
-        "upstreamModel": "gpt-4o"
+        "name": "gpt-4o",
+        "provider": "wso2-openai-provider",
+        "alias": "openai"
       }
     ]
   }
@@ -82,15 +80,13 @@ Required roles: `admin`
     "version": "v1.0",
     "modelName": "gpt-4o",
     "endpoints": [
-      "wso2"
+      "openai"
     ],
     "targets": [
       {
-        "name": "openai",
-        "provider": {
-          "id": "wso2-openai-provider"
-        },
-        "upstreamModel": "gpt-4o"
+        "name": "gpt-4o",
+        "provider": "wso2-openai-provider",
+        "alias": "openai"
       }
     ]
   },
@@ -176,15 +172,13 @@ Required roles: `admin`, `developer`
         "version": "v1.0",
         "modelName": "gpt-4o",
         "endpoints": [
-          "wso2"
+          "openai"
         ],
         "targets": [
           {
-            "name": "openai",
-            "provider": {
-              "id": "wso2-openai-provider"
-            },
-            "upstreamModel": "gpt-4o"
+            "name": "gpt-4o",
+            "provider": "wso2-openai-provider",
+            "alias": "openai"
           }
         ]
       },
@@ -236,10 +230,9 @@ Status Code **200**
 |»»»» modelName|string|true|none|The name clients send for this Model, wherever the endpoint's inbound format carries the model (the `model` field for OpenAI and Anthropic, the path for Gemini). Unique across Models on this gateway. Matched exactly and case-sensitively.|
 |»»»» endpoints|[string]|true|none|Handles of the model endpoints that serve this Model. Required, with no implicit default. Each must name a model endpoint on this gateway, deployed or not; a save naming one that does not exist is refused with 400. A Model saved as deployed is also refused with 400 when a named endpoint cannot serve it, for example when it has no transformer for one of the Model's providers.|
 |»»»» targets|[[ModelTarget](schemas.md#schemamodeltarget)]|true|none|The upstream models this Model can be served by. Each target is a pair of a deployed LLM provider and the model name that provider knows it by, and the pair is unique within the Model. With more than one target, `routing` is required to choose between them. The first target is the default: it serves a request the routing policy did not place.|
-|»»»»» name|string|true|none|Name of this target, unique within the Model. A routing policy's model fields (`model`, `defaultModel`, `modelName`) may name the target by this name, as well as by its upstream model.|
-|»»»»» provider|[ModelTargetProvider](schemas.md#schemamodeltargetprovider)|true|none|none|
-|»»»»»» id|string|true|none|Handle of a deployed LLM provider|
-|»»»»» upstreamModel|string|true|none|The model name sent to the provider. For an Azure OpenAI provider this is the deployment name.|
+|»»»»» name|string|true|none|The model name sent to the provider, as the provider knows it. For an Azure OpenAI provider this is the deployment name. A routing policy's model fields (`model`, `defaultModel`, `modelName`) may name the target by this name or by its `alias`.|
+|»»»»» provider|string|true|none|Handle of a deployed LLM provider|
+|»»»»» alias|string|false|none|A short name a routing policy's model fields may use for this target, in place of its `name`. Defaults to `name`, and unique within the Model, so two targets serving the same model through different providers need an alias on at least one of them.|
 |»»»»» auth|[LLMUpstreamAuth](schemas.md#schemallmupstreamauth)|false|none|Credential the gateway presents to a provider reached through its own route (`exposure: route`) — the same field, with the same rules, as `auth` on an LLM proxy's provider. Required when that provider's route authenticates with api-key-auth; rejected for a provider with `exposure: none`, which is called directly with the provider's own upstream credential. Write-only values are never returned and are inherited on an update that omits them.|
 |»»»»»» type|string|true|none|"api-key" attaches the built-in set-headers policy by default (overridable via policyName) and accepts either the generic policyParams bucket or its own deprecated header/value fields below. "oauth2" attaches the built-in oauth2-generator policy by default (overridable via policyName) and always requires policyParams - there is no typed-field fallback for it. "other" attaches any policy by name - policyName and policyParams are both required in that case, since there is no built-in default or typed-field fallback for a non-built-in auth scheme. "none": no upstream authentication - the gateway attaches no auth policy of its own; auth (if any) is handled entirely by user-attached policies elsewhere.|
 |»»»»»» policyName|string|false|none|Name of the policy that implements this upstream auth. Optional for "api-key"/"oauth2" (defaults to the built-in policy for that type - api-key -> set-headers, oauth2 -> oauth2-generator); set it to point at your own fork or a newer major version's replacement instead. Required when type is "other".|
@@ -247,7 +240,7 @@ Status Code **200**
 |»»»»»» policyParams|object|false|none|Parameters passed verbatim to policyName (or the built-in default for type). Required when type is "oauth2" or "other" - oauth2 has no typed fields at all, only this bucket (e.g. {tokenEndpoint: ..., clientId: ..., clientSecret: ...} for the token-endpoint path, or {bearerToken: ...} for a directly-supplied credential). For "api-key", optional: replaces the deprecated header/value fields below when set; do not set both at once.|
 |»»»»»» header|string|false|none|Deprecated: use policyParams (e.g. {request: {headers: [{name: ..., value: ...}]}} - the set-headers policy's own param shape) instead. HTTP header to set on outbound requests. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility.|
 |»»»»»» value|string|false|write-only|Deprecated: use policyParams instead. Upstream credential. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility. Write-only: accepted on create/update and never returned by the management API on a read, for any role. An update that omits it inherits the stored value; set `type: none` to remove auth.|
-|»»»» routing|[ModelRouting](schemas.md#schemamodelrouting)|false|none|The routing policy that chooses a target per request. Any model routing policy can be used (round-robin, weighted round-robin, semantic, cost-based, time-based, intelligent routing, header routing). Its parameters are the policy's own, written as the policy defines them. A parameter that names a model (`model`, `defaultModel`, `modelName`) may give a target's name or its upstream model; one that names a provider gives a provider handle. At request time the gateway matches the policy's choice to one of the Model's targets, and a choice that matches none is served by the first target.|
+|»»»» routing|[ModelRouting](schemas.md#schemamodelrouting)|false|none|The routing policy that chooses a target per request. Any model routing policy can be used (round-robin, weighted round-robin, semantic, cost-based, time-based, intelligent routing, header routing). Its parameters are the policy's own, written as the policy defines them. A parameter that names a model (`model`, `defaultModel`, `modelName`) may give a target's `alias` or its `name`; one that names a provider gives a provider handle. At request time the gateway matches the policy's choice to one of the Model's targets, and a choice that matches none is served by the first target.|
 |»»»»» policy|[ModelRoutingPolicy](schemas.md#schemamodelroutingpolicy)|true|none|none|
 |»»»»»» name|string|true|none|Routing policy name|
 |»»»»»» version|string|true|none|Major-only routing policy version|
@@ -349,15 +342,13 @@ Required roles: `admin`, `developer`
     "version": "v1.0",
     "modelName": "gpt-4o",
     "endpoints": [
-      "wso2"
+      "openai"
     ],
     "targets": [
       {
-        "name": "openai",
-        "provider": {
-          "id": "wso2-openai-provider"
-        },
-        "upstreamModel": "gpt-4o"
+        "name": "gpt-4o",
+        "provider": "wso2-openai-provider",
+        "alias": "openai"
       }
     ]
   },
@@ -413,15 +404,13 @@ Update an existing Model in the Gateway.
     "version": "v1.0",
     "modelName": "gpt-4o",
     "endpoints": [
-      "wso2"
+      "openai"
     ],
     "targets": [
       {
-        "name": "openai",
-        "provider": {
-          "id": "wso2-openai-provider"
-        },
-        "upstreamModel": "gpt-4o"
+        "name": "gpt-4o",
+        "provider": "wso2-openai-provider",
+        "alias": "openai"
       }
     ]
   }
@@ -460,15 +449,13 @@ Required roles: `admin`
     "version": "v1.0",
     "modelName": "gpt-4o",
     "endpoints": [
-      "wso2"
+      "openai"
     ],
     "targets": [
       {
-        "name": "openai",
-        "provider": {
-          "id": "wso2-openai-provider"
-        },
-        "upstreamModel": "gpt-4o"
+        "name": "gpt-4o",
+        "provider": "wso2-openai-provider",
+        "alias": "openai"
       }
     ]
   },
